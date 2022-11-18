@@ -1,13 +1,15 @@
 import os 
-import yt 
+#import yt 
 import pyfof
 import random
 import pynbody
+import palettable
 import numpy as np 
 import pandas as pd
 import matplotlib.cm as cm
 import pynbody.plot.sph as sph
 import matplotlib.pyplot as plt 
+import seaborn as sns
 import matplotlib.colors as colors
 import track_halo_number
 from statistics import mode
@@ -41,6 +43,52 @@ def get_fn(model):
 	else:
 		print('model isnt currently an option. Add it or try again.')
 	return fn
+
+def amiga_Nclumps(model): 
+	halo, output = get_model_outputs_halos(model)
+	outfn = '../datfiles/' + model + '_amiga_N.dat'
+	print('starting output = ', output)
+	print('starting halo = ', halo)
+	if os.path.exists(outfn):
+		outfile = open(outfn, 'r')
+		lines = [line for line in outfile]
+		outfile.close()
+		
+		#finds what the last group in the file is 	
+		if len(lines) == 1 :
+			#file only has column names wriitten
+			last_output_in_file = 0
+		else:
+			if(model=='P0'):
+				last_output_in_file = 7 + len(lines) - 2
+			elif(model=='GM1'):
+				last_output_in_file = 6 + len(lines) - 2 
+			else: 
+				last_output_in_file = len(lines) - 2
+	#creates an outfile if one doesnt already exist
+	else:
+		last_output_in_file = 0
+		with open(outfn, 'a') as outfile:
+			outfile.write('model output N\n')
+	print('last_output_in_file = ', last_output_in_file)
+	output = output[last_output_in_file:]
+	halo = halo[last_output_in_file:]
+	print('output = ', output)
+	print('halo = ', halo)
+	for i in range(len(halo)): 
+		try: 
+			if(len(str(output[i])) == 2):
+				pyfof_grp, pyfof_iord = clumps_and_iords(model, '0000' + str(output[i]), 1, 4e-8, 2, halo[i])
+			elif(len(str(output[i])) == 3):
+				pyfof_grp, pyfof_iord = clumps_and_iords(model, '000' + str(output[i]), 1, 4e-8, 2, halo[i])
+			elif(len(str(output[i])) == 4):
+				pyfof_grp, pyfof_iord = clumps_and_iords(model, '00' + str(output[i]), 1, 4e-8, 2, halo[i])
+			print('N clumps = ', len(pyfof_grp))
+			with open(outfn, 'a') as outfile: 
+				outfile.write('%s %i %i\n' % (model, output[i], len(pyfof_grp)))
+			print('done with output ', output[i])
+		except:
+			print('something up with model ' + model + ' output ' + str(output[i]))
 
 def trace_alliords_ever_inclumps(model): 
 	
@@ -182,32 +230,31 @@ def timetrace_clumps(model):
 		uni_tracegrps = np.unique(data_output1_tracegrps['grpmatch'])
 		tracegrp_map = np.in1d(data_output2['grp'], uni_tracegrps)
 
-def get_haloproperties(models): 
-	tsdata    = pd.read_table('../datfiles/GMs_track_halos_v2.dat', sep='\s+')
-	tsgm3data = pd.read_table('../datfiles/GM3_track_halos.dat', sep='\s+')
-	tsdata    = pd.concat([tsdata, tsgm3data])
-	outfn = 'GMs_galaxy_properties_3456.dat'
+def get_haloproperties(model): 
+	#tsdata    = pd.read_table('../datfiles/GMs_track_halos_v2.dat', sep='\s+')
+	#tsgm3data = pd.read_table('../datfiles/GM3_track_halos.dat', sep='\s+')
+	#tsdata    = pd.concat([tsdata, tsgm3data])
+	outfn = model + '_galaxy_properties.dat'
 	outfile = open(outfn, 'w')
 	outfile.write('model output rvir[kpc] smass[Msol] dmass[Msol] gmass[Msol]\n')
 	 
-	for i in range(len(models)): 
-		model_data = tsdata[tsdata['model'] == models[i]]
-		#outputs = np.array(model_data['output'])
-		#halos   = np.array(model_data['halo'])
-		outputs = ['003456']
-		halos   = [1]
-		for j in range(len(outputs)): 
-			#try:
-			h1   = get_mainHalo(models[i], outputs[j], halos[j])
+	halos, outputs = get_model_outputs_halos(model) 
+	print('halos = ', halos)
+	for j in range(len(outputs)): 
+		try:
+			if(len(str(outputs[j])) == 3): 
+				h1   = get_mainHalo(model,'000' +  str(outputs[j]), halos[j])
+			else: 
+				h1   = get_mainHalo(model,'00' +  str(outputs[j]), halos[j])
 			rvir = pynbody.analysis.halo.virial_radius(h1, overden=200)
 			halo = h1[h1['r'] < rvir]
 			smass = sum(halo.s['mass'])
 			dmass = sum(halo.d['mass'])
 			gmass = sum(halo.g['mass'])
-			outfile.write('%s %s %.2f %.2f %.2f %.2f\n' % (models[i], outputs[j], rvir, smass, dmass, gmass))
-			print('done with model ' + models[i] + ' output ' + outputs[j])
-			#except: 
-			#	print('something is up with model ' + models[i] + ' output ' + outputs[j])
+			outfile.write('%s %i %.2f %.2f %.2f %.2f\n' % (model, outputs[j], rvir, smass, dmass, gmass))
+			print('done with model ' + model + ' output ' + str(outputs[j]))
+		except: 
+			print('something is up with model ' + model + ' output ' + str(outputs[j]))
 	outfile.close()
 
 def HI_covering_frac(models, output, radius, gal): 
@@ -313,30 +360,50 @@ def timetrace_grpclumps(model, link_len, HI_cut, min_m):
 	else:
 		last_timestep_in_file = 0
 		with open(outfn, 'a') as outfile:
-			outfile.write('model output1 output2 grp grpmatch fraction\n')
-	
+			outfile.write('model output1 output2 grp grpmatch fraction mass_fraction\n')
+
+	#get progenitor halos and connected outputs for model from tangos	
 	halo, output = get_model_outputs_halos(model)
-	
-	for j in range(last_timestep_in_file, len(output)):
+	#halo = halo[3:5]
+	#output = output[3:5] 
+	print('output = ', output) 
+	print('halo = ', halo) 
+	print('last_timestep_in_file = ', last_timestep_in_file)	 
+	for j in range(last_timestep_in_file, len(output)-1):
+		print('j = ', j)
+		print('----------------------working on output ' + str(output[j]) + ' halo ' + str(halo[j]) + '-------------------------')
 		try: 
 			if(len(str(output[j+1])) == 4):
 				tsoutfn = fn2 + '00' + str(output[j+1])
-				s = pynbody.load(tsoutfn)
-				clump_grp = np.loadtxt(tsoutfn + '.clump.grp')
-				pyfof_grps, grp_iords = clumps_and_iords(model, '00' + str(output[j]), link_len, HI_cut, min_m, halo[j])
 			else: 
 				tsoutfn = fn2 + '000' + str(output[j+1])
-				s = pynbody.load(tsoutfn)
-				clump_grp = np.loadtxt(tsoutfn + '.clump.grp')
+			print('tsoutfn = ' + str(tsoutfn))
+			if(len(str(output[j])) == 4): 
+				print('trying to load grps and iords for ' + '00' + str(output[j]))
+				pyfof_grps, grp_iords = clumps_and_iords(model, '00' + str(output[j]), link_len, HI_cut, min_m, halo[j])
+			else:
+				print('trying to load grps and iords for ' + '000' + str(output[j]))
 				pyfof_grps, grp_iords = clumps_and_iords(model, '000' + str(output[j]), link_len, HI_cut, min_m, halo[j])
-			
+			print('got grps and iords for output1 = ' + str(output[j]))
+			#clump grp ID associated with every gas particle in a given time step 
+			clump_grp = np.loadtxt(tsoutfn + '.clump.grp')
+			s = pynbody.load(tsoutfn)
+			print('loaded s for output2 = ' + str(output[j+1]))
+			print('working on tracing particles from output1 = ' + str(output[j]) + ' into output2 = ' + str(output[j+1]))	
 			s.physical_units()
 			s.g['clump.grp'] = clump_grp
+			print('assigned clump.grp array to s')
+			#go through all of the groups in a given output j
+			print('len of grp_iords = ' + str(len(grp_iords))) 
+			print('grp_iords = ' + str(grp_iords)) 
 			for i in range(len(grp_iords)):
+				print('working on grp with index ' + str(i))
+				print('grp_iords[' + str(i) + '] = ' + str(grp_iords[i]))
 				grpmap = np.in1d(s.g['iord'], grp_iords[i])
 				unigrp = np.unique(s.g[grpmap]['clump.grp'])
+				print('working on grp with index ' + str(i))
 				print("partices in adj ts grps " + str(s.g[grpmap]['clump.grp']))
-				print("unique grps for index+1 = " + str(i+1) + ' is ' + str(unigrp))	
+				print("unique grps in adj ts =  " + str(unigrp))	
 				try:
 					matching_grp = mode(s.g[grpmap]['clump.grp'])
 					grp = i+1
@@ -347,11 +414,33 @@ def timetrace_grpclumps(model, link_len, HI_cut, min_m):
 					elif(len(unigrp)==2):
 						matching_grp = min(unigrp)
 						grp = i+1
-				fraction = len(s.g[grpmap]['clump.grp'][s.g[grpmap]['clump.grp'] == matching_grp])/len(s.g[grpmap])
+					elif(len(unigrp)==1):
+						matching_grp = unigrp[0]
+						grp = i+1
+					elif(len(unigrp) > 1): 
+						matching_grp = max(unigrp)  
+						grp = i+1 
+				print('assigned matching grp')
+				print('matching_grp = ', matching_grp)
+				fraction  = len(s.g[grpmap]['clump.grp'][s.g[grpmap]['clump.grp'] == matching_grp])/len(s.g[grpmap])
+				print('fraction  = ' + str(fraction))
+				print('mass of original grp = ' + str(s.g[grpmap]['mass']))
+				print('particle mass with matching_grp number = ' + str(s.g[grpmap]['mass'][s.g[grpmap]['clump.grp'] == matching_grp]))
+				mass_frac = sum(s.g[grpmap]['mass'][s.g[grpmap]['clump.grp'] == matching_grp])/sum(s.g[grpmap]['mass'])
+				print('mass_frac = ' + str(mass_frac))
 				with open(outfn, 'a') as outfile: 
-					outfile.write('%s %s %s %i %i %.2f\n' % (model, output[j], output[j+1], grp, matching_grp, fraction))	
-		except: 
-			print(tsoutfn + 'or its clump.grp file are missing.')	
+					outfile.write('%s %s %s %i %i %.2f %.2f\n' % (model, output[j], output[j+1], grp, matching_grp, fraction, mass_frac))	
+			print('done tracing grps from output1 = ' + str(output[j])) 
+		except:
+			if(output[j]==345): 
+				if(len(str(output[j])) == 4): 
+					print('trying to load grps and iords for ' + '00' + str(output[j]))
+					pyfof_grps, grp_iords = clumps_and_iords(model, '00' + str(output[j]), link_len, HI_cut, min_m, halo[j])
+				else:
+					print('trying to load grps and iords for ' + '000' + str(output[j]))
+					pyfof_grps, grp_iords = clumps_and_iords(model, '000' + str(output[j]), link_len, HI_cut, min_m, halo[j])
+				print('got grps and iords for output1 = ' + str(output[j]))
+			print(tsoutfn + ' or its clump.grp file are missing.')	
 
 def clumps_and_iords(model, output, link_len, HI_cut, min_m, halo):
 	fn = get_fn(model)
@@ -372,7 +461,7 @@ def clumps_and_iords(model, output, link_len, HI_cut, min_m, halo):
 	h21_HIcut = h21_rcut[h21_rcut['HIn']  > HI_cut]
 	
 	pyn_data =  np.array(h21_HIcut['pos'])
-	print('pyn_data = ', pyn_data)
+	#print('pyn_data = ', pyn_data)
 	pyn_groups = pyfof.friends_of_friends(pyn_data, link_len)
 	pyfof_grp_minm = grp_min_m(pyn_groups, min_m)
 	pyfof_iord = get_iords(s2.g, h21_HIcut, pyfof_grp_minm)
@@ -486,7 +575,7 @@ def pyfof_clump_data(model, output, link_len, HI_cut, min_m):
 	
 	fn = get_fn(model)
 
-	outfn = '/scratch/08263/tg875625/scripts/datfiles/' + model + '_' + output + '_HI' + str(HI_cut) + '_' + str(link_len) + 'kpc_clump_data.dat'
+	outfn = '../datfiles/' + model + '_' + output + '_HI' + str(HI_cut) + '_' + str(link_len) + 'kpc_clump_data.dat'
 		
 	#check if outfile already exists	
 	if os.path.exists(outfn):
@@ -721,6 +810,64 @@ def velHist_pyfofclumps(model, output, link_len, HI_cut, min_m, z1,datfile):
 	cold_hot_clump_dict.close()
 	inter_hot_clump_dict.close()
 
+def HI_galaxy_image(model, output, HI_cut, width, res, vmin, vmax, show):
+	fn = get_fn(model)
+	
+	s2 = pynbody.load(fn + output)
+	s2.physical_units()
+	z = s2.properties['z']
+	h2 = s2.halos()
+	h21 = h2[1]
+	pynbody.analysis.halo.center(h21, mode='com')
+	h21_rcut = h21.g[h21.g['r'].in_units('kpc') > 15]
+	s2 = cut_gal(s2)
+
+	if(model=='P0' and output=='003456'):
+		h10 = h2[11]
+		h10com = pynbody.analysis.halo.center_of_mass(h10)
+		h10_rvir = 69.1382
+		print('h10com = ', h10com)
+	#add N HI 	
+	mp = pynbody.array.SimArray(1.67262 * 10**(-27))
+	mp.units = 'kg'
+	HI_mp = s2.g['HI'] * s2.g['rho'].in_units('kg cm**-3') / ( mp ) 
+	s2.g['HIn'] = HI_mp
+	s2.g['HIn'].units = 'cm**-3'
+	h21_HIcut = h21_rcut[h21_rcut['HIn']  > HI_cut]
+	h1_rvir = pynbody.analysis.halo.virial_radius(h2[1])
+	
+	fig = plt.figure(figsize =(15, 13))
+	image2 = sph.image(s2.g, qty="HIn",width=width,cmap='cividis', resolution=res, av_z ='rho')	
+	x = np.linspace(-width/2, width/2, res)
+	X, Y = np.meshgrid(x, x)
+	
+	#fig = plt.figure(figsize = (15, 15))
+	fig, ax = plt.subplots(figsize = (15, 13))
+	pim = ax.pcolormesh(X, Y, image2, cmap =palettable.cartocolors.sequential.Sunset_7.mpl_colormap, norm = colors.LogNorm(vmin, vmax) )
+	ax.annotate(model, xy = ((-width/2)+50, (width/2)-50 ), color = 'white', fontsize = 20)
+	ax.annotate('z = %.2f'%z, xy = ((width/2)- 100, (width/2) - 50), color = 'white', fontsize = 20 )
+	ax.tick_params(labelsize = 20)
+	cb = fig.colorbar(pim)
+	cb.ax.tick_params(labelsize = 20)
+	cb.ax.set_ylabel(r'n$_{HI}$ [cm$^{-3}$]', fontsize = 20)
+	ax.set_xlim(-width/2, width/2)
+	ax.set_ylim(-width/2, width/2)
+	ax.set_xlabel('x [kpc]', fontsize=20)
+	ax.set_ylabel('y [kpc]', fontsize=20)
+	circle = plt.Circle([0, 0], h1_rvir, color ='white', fill = False)
+	ax.add_patch(circle)
+	if(model=='P0' and output=='003456'):
+		circle2 = plt.Circle([h10com[0], h10com[1]], h10_rvir, color ='gray', fill = False)
+		ax.add_patch(circle2)
+	
+	outfile = model + '_output_' + output + '_fullCGM_fullrange_HI_image_Cruz2022_Sunset7.png'
+	plt.savefig(outfile)
+	
+	if(show == True):
+		plt.show() 
+	else: 
+		plt.clf()		
+
 def pyfof_clumps(model, output, link_len, HI_cut, plot, plt_all, HIarray, show, rotate, min_m, res, width, vmin, vmax, z1):
 	"""
 	rotate = array of x, y, z rotation angles
@@ -742,17 +889,10 @@ def pyfof_clumps(model, output, link_len, HI_cut, plot, plt_all, HIarray, show, 
 	s2.g['HIn'] = HI_mp
 	s2.g['HIn'].units = 'cm**-3'
 
-	if(HIarray == 'yt'):
-		ds = yt.load(fn + output)
-		ad = ds.all_data()
-		trident.add_ion_fields(ds, ions=['H I'], ftype="gas")
-		pyn_HI = pynbody.array.SimArray(ad[('gas', 'H_p0_number_density')])
-		pyn_HI.units = 'cm^-3'
-		s2.g['HI'] = pyn_HI
-	elif(HIarray == 'pynbody'): 
+	if(HIarray == 'pynbody'): 
 		print('pynbody HI array being used')
 	else: 
-		print('didnt pick aval option. Pick pynbody or yt.')	
+		print('didnt pick aval option. Pick pynbody.')	
 
 	h21_HIcut = h21_rcut[h21_rcut['HIn']  > HI_cut]
 
@@ -769,9 +909,6 @@ def pyfof_clumps(model, output, link_len, HI_cut, plot, plt_all, HIarray, show, 
 	pyn_groups = pyfof.friends_of_friends(pyn_data, link_len)
 	
 	if(plot): 
-		pyn_colors = cm.twilight(np.linspace(0, 1, len(pyn_groups)))
-		print('pyn_colors = ' + str(pyn_colors))
-	
 		fig = plt.figure(figsize =(15, 15))
 		if(plt_all):
 			image2 = sph.image(s2.g, qty="HIn",width=width,cmap='cividis', resolution=res, av_z ='rho')	
@@ -784,37 +921,45 @@ def pyfof_clumps(model, output, link_len, HI_cut, plot, plt_all, HIarray, show, 
 		X, Y = np.meshgrid(x, x)
 	
 		#fig = plt.figure(figsize = (15, 15))
-		fig, ax = plt.subplots(figsize = (15, 15))
+		fig, ax = plt.subplots(figsize = (15, 13))
 		pim = ax.pcolormesh(X, Y, image2, cmap = 'cividis', norm = colors.LogNorm(vmin, vmax) )
-		ax.annotate(model, xy = ((-width/2)+50, (width/2)-50 ), color = 'white', fontsize = 16)
-		ax.annotate('z = %.2f'%z1, xy = ((width/2)- 100, (width/2) - 50), color = 'white', fontsize = 16 )
-		ax.annotate('m = ' + str(min_m) + ' e = ' + str(link_len) + ' kpc', xy = ((width/2)- 125, -((width/2) - 50)), color = 'white', fontsize = 16 )
-		ax.tick_params(labelsize = 16)
+		ax.annotate(model, xy = ((-width/2)+50, (width/2)-50 ), color = 'white', fontsize = 20)
+		ax.annotate('z = %.2f'%z1, xy = ((width/2)- 100, (width/2) - 50), color = 'white', fontsize = 20 )
+		ax.annotate('m = ' + str(min_m) + ' e = ' + str(link_len) + ' kpc', xy = ((width/2)- 125, -((width/2) - 50)), color = 'white', fontsize = 20)
+		ax.tick_params(labelsize = 20)
 		cb = fig.colorbar(pim)
-		cb.ax.tick_params(labelsize = 16)
-		cb.ax.set_ylabel(r'n$_{HI}$ [cm$^{-3}$]', fontsize = 16)
+		cb.ax.tick_params(labelsize = 20)
+		cb.ax.set_ylabel(r'n$_{HI}$ [cm$^{-3}$]', fontsize = 20)
 		
 		if(rotate[0] == -90):	
-			plt.xlabel('x [kpc]', fontsize = 16)
-			plt.ylabel('z [kpc]', fontsize = 16)
+			plt.xlabel('x [kpc]', fontsize = 20)
+			plt.ylabel('z [kpc]', fontsize = 20)
 		elif(rotate[1] == 90): 
-			plt.xlabel('z [kpc]', fontsize = 16)
-			plt.ylabel('y [kpc]', fontsize = 16)
+			plt.xlabel('z [kpc]', fontsize = 20)
+			plt.ylabel('y [kpc]', fontsize = 20)
 		else:
-			plt.xlabel('x [kpc]', fontsize = 16)
-			plt.ylabel('y [kpc]', fontsize = 16)
+			plt.xlabel('x [kpc]', fontsize = 20)
+			plt.ylabel('y [kpc]', fontsize = 20)
 		
+		sing_part_grps = grp_min_m(pyn_groups, 1)
 		pyfof_grp_minm = grp_min_m(pyn_groups, min_m)
+		print('number of grps with minm ', len(pyfof_grp_minm))
 		
+		pyn_colors = cm.twilight(np.linspace(0, 1, len(pyfof_grp_minm)))
+		print('pyn_colors = ' + str(pyn_colors))
+	
+	
 		if(plt_all):
 			pyfof_iord = get_iords(s2.g, h21_HIcut, pyfof_grp_minm)
 		else: 
 			pyfof_iord = get_iords(h21_HIcut, h21_HIcut, pyfof_grp_minm)
 
 		
+		for i in sing_part_grps:
+			if(len(pyn_data[i, 0]) == 1):
+				ax.scatter(pyn_data[i,0], pyn_data[i,1], color='k', s=10, marker='x')
+		
 		i = 0 
-		clump_dict = open(datfile, 'w')
-		clump_dict.write('inx clump_mass cold_mass inter_mass hot_mass max_comdist N Ncold Ninter Nhot \n')
 		for k,c in zip(pyfof_grp_minm, pyn_colors):
 			r = random.random()
 			g = random.random()
@@ -822,22 +967,19 @@ def pyfof_clumps(model, output, link_len, HI_cut, plot, plt_all, HIarray, show, 
 			ax.scatter(pyn_data[k,0], pyn_data[k,1], color=[r,b,g], s=3)
 			if(plt_all):
 				comi = get_pyfof_com_1(s2.g, pyfof_iord[i])
-				print('comi = ' + str(comi))
+				print('done with clump ' + str(i))
+				#print('comi = ' + str(comi))
 				iord_map = np.in1d(s2.g['iord'], pyfof_iord[i])
 				pyfof_grpi = s2.g[iord_map]
-				print('pos of pyfof_grpi before = ' + str(pyfof_grpi['pos']))	
+				#print('pos of pyfof_grpi before = ' + str(pyfof_grpi['pos']))	
 				grp_com_translate(s2.g, comi)
 				pyfof_grpr = max(pyfof_grpi['r'].in_units('kpc'))
-				print(pyfof_grpr)
+				#print(pyfof_grpr)
 				clumpgas = s2.g[s2.g['r'].in_units('kpc') <= pyfof_grpr]
-				coldgas = cold_gas(clumpgas)
-				hotgas  = hot_gas(clumpgas)
-				intgas  = inter_gas(clumpgas)
-				clump_dict.write('%i %f %f %f %f %f %i %i %i %i \n'%(i, sum(clumpgas['mass']), sum(coldgas['mass']), sum(intgas['mass']), sum(hotgas['mass']), pyfof_grpr, len(clumpgas), len(coldgas), len(intgas), len(hotgas)))
 				grp_com_translate(s2.g, -comi)
 				h1_com = pynbody.analysis.halo.center_of_mass(h21)
-				print('h1_com com translate back ' + str(h1_com))
-				print(h1_com)
+				#print('h1_com com translate back ' + str(h1_com))
+				#print(h1_com)
 			else: 
 				comi = get_pyfof_com_1(h21_HIcut, pyfof_iord[i])
 				grp_com_translate(h21_HIcut, comi)
@@ -845,19 +987,19 @@ def pyfof_clumps(model, output, link_len, HI_cut, plot, plt_all, HIarray, show, 
 				pyfof_grpi = h21_HIcut[iord_map]
 				pyfof_grpr = max(pyfof_grpi['r'])
 				grp_com_translate(h21_HIcut, -comi)
-			print(pyfof_grpr)
+			#print(pyfof_grpr)
 			circle = plt.Circle(comi, pyfof_grpr, color=[r,b,g], alpha=0.3)				
 			ax.add_patch(circle)
 			i += 1
-		clump_dict.close()
 
+		
 		ax.set_xlim(-width/2, width/2)
 		ax.set_ylim(-width/2, width/2)
 
 		if(plt_all): 
-			outfile = 'all_s_' + model + '_' + output + 'rotatex_' + str(rotate[0]) + '_y_' + str(rotate[1]) + '_z_' + str(rotate[2]) + 'min_m' + str(min_m) + '_e' + str(link_len)  + '_HIcutfix_HIsph_pyfof.pdf'
+			outfile = '../pdfs/all_s_' + model + '_' + output + 'rotatex_' + str(rotate[0]) + '_y_' + str(rotate[1]) + '_z_' + str(rotate[2]) + 'min_m' + str(min_m) + '_e' + str(link_len)  + '_HIcutfix_HIsph_pyfof.png'
 		else: 
-			outfile = 'h_r_HIcut_' + model + '_' + output + 'rotatex_' + str(rotate[0]) + '_y_' + str(rotate[1]) + '_z_' + str(rotate[2]) + 'min_m' + str(min_m) + '_e' + str(link_len) + '_HIcutfix_HIsph_pyfof.pdf'
+			outfile = '../pdfs/h_r_HIcut_' + model + '_' + output + 'rotatex_' + str(rotate[0]) + '_y_' + str(rotate[1]) + '_z_' + str(rotate[2]) + 'min_m' + str(min_m) + '_e' + str(link_len) + '_HIcutfix_HIsph_pyfof.png'
 			
 		plt.savefig(outfile)
 	
@@ -878,18 +1020,18 @@ def pyfof_clump_mass(model, output, link_len, HI_cut, HIarray):
 	pynbody.analysis.halo.center(h21, mode='com')
 	h21_rcut = h21.g[h21.g['r'].in_units('kpc') > 15]
 	
-	ds = yt.load(fn + output)
-	ad = ds.all_data()
+	#ds = yt.load(fn + output)
+	#ad = ds.all_data()
 
-	if(HIarray == 'yt'):
-		trident.add_ion_fields(ds, ions=['H I'], ftype="gas")
-		pyn_HI = pynbody.array.SimArray(ad[('gas', 'H_p0_number_density')])
-		pyn_HI.units = 'cm^-3'
-		s2.g['HI'] = pyn_HI
-	elif(HIarray == 'pynbody'): 
+	#if(HIarray == 'yt'):
+	#	trident.add_ion_fields(ds, ions=['H I'], ftype="gas")
+	#	pyn_HI = pynbody.array.SimArray(ad[('gas', 'H_p0_number_density')])
+	#	pyn_HI.units = 'cm^-3'
+	#	s2.g['HI'] = pyn_HI
+	if(HIarray == 'pynbody'): 
 		print('pynbody HI array being used')
 	else: 
-		print('didnt pick aval option. Pick pynbody or yt.')	
+		print('didnt pick aval option. Pick pynbody.')	
 	
 
 	h21_HI = h21_rcut[h21_rcut['HI'] > HI_cut]
@@ -1136,6 +1278,28 @@ def temp_compareHist(models, output):
 	plt.savefig(outfile) 
 	plt.show()
 
+def model_colors(model):
+    DM_pal = sns.cubehelix_palette(n_colors=7, reverse=True)
+    SF_pal = sns.cubehelix_palette(n_colors=4, start=.5, rot=-.75)
 
-
-
+    if model == 'P0':
+        pcol = SF_pal[0]
+    elif model == 'P0noBHs':
+        pcol = SF_pal[1]
+    elif model == 'GM1':
+        pcol = SF_pal[2]
+    elif model == 'GM1noBHs':
+        pcol = SF_pal[3]
+    elif model == 'GM2':
+        pcol = DM_pal[1]
+    elif model == 'GM2noBHs':
+        pcol = DM_pal[2]
+    elif model == 'GM2SI1':
+        pcol = DM_pal[3]
+    elif model == 'GM3':
+        pcol = DM_pal[4]
+    elif model == 'GM3noBHs':
+        pcol = DM_pal[5]
+    elif model == 'GM3SI1':
+        pcol = DM_pal[6]
+    return pcol
