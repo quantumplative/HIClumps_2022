@@ -1,5 +1,5 @@
 import os 
-#import yt 
+import yt 
 import pyfof
 import random
 import pynbody
@@ -575,7 +575,7 @@ def pyfof_clump_data(model, output, link_len, HI_cut, min_m):
 	
 	fn = get_fn(model)
 
-	outfn = '../datfiles/' + model + '_' + output + '_HI' + str(HI_cut) + '_' + str(link_len) + 'kpc_clump_data.dat'
+	outfn = '/scratch/08263/tg875625/scripts/datfiles/' + model + '_' + output + '_HI' + str(HI_cut) + '_' + str(link_len) + 'kpc_clump_data.dat'
 		
 	#check if outfile already exists	
 	if os.path.exists(outfn):
@@ -843,7 +843,7 @@ def HI_galaxy_image(model, output, HI_cut, width, res, vmin, vmax, show):
 	
 	#fig = plt.figure(figsize = (15, 15))
 	fig, ax = plt.subplots(figsize = (15, 13))
-	pim = ax.pcolormesh(X, Y, image2, cmap =palettable.cartocolors.sequential.Sunset_7.mpl_colormap, norm = colors.LogNorm(vmin, vmax) )
+	pim = ax.pcolormesh(X, Y, image2, cmap =palettable.cartocolors.sequential.Sunset_7_r.mpl_colormap, norm = colors.LogNorm(vmin, vmax) )
 	ax.annotate(model, xy = ((-width/2)+50, (width/2)-50 ), color = 'white', fontsize = 20)
 	ax.annotate('z = %.2f'%z, xy = ((width/2)- 100, (width/2) - 50), color = 'white', fontsize = 20 )
 	ax.tick_params(labelsize = 20)
@@ -860,7 +860,7 @@ def HI_galaxy_image(model, output, HI_cut, width, res, vmin, vmax, show):
 		circle2 = plt.Circle([h10com[0], h10com[1]], h10_rvir, color ='gray', fill = False)
 		ax.add_patch(circle2)
 	
-	outfile = model + '_output_' + output + '_fullCGM_fullrange_HI_image_Cruz2022_Sunset7.png'
+	outfile = model + '_output_' + output + '_fullCGM_fullrange_HI_image_Cruz2022_Sunset7r.png'
 	plt.savefig(outfile)
 	
 	if(show == True):
@@ -889,10 +889,17 @@ def pyfof_clumps(model, output, link_len, HI_cut, plot, plt_all, HIarray, show, 
 	s2.g['HIn'] = HI_mp
 	s2.g['HIn'].units = 'cm**-3'
 
-	if(HIarray == 'pynbody'): 
+	if(HIarray == 'yt'):
+		ds = yt.load(fn + output)
+		ad = ds.all_data()
+		trident.add_ion_fields(ds, ions=['H I'], ftype="gas")
+		pyn_HI = pynbody.array.SimArray(ad[('gas', 'H_p0_number_density')])
+		pyn_HI.units = 'cm^-3'
+		s2.g['HI'] = pyn_HI
+	elif(HIarray == 'pynbody'): 
 		print('pynbody HI array being used')
 	else: 
-		print('didnt pick aval option. Pick pynbody.')	
+		print('didnt pick aval option. Pick pynbody or yt.')	
 
 	h21_HIcut = h21_rcut[h21_rcut['HIn']  > HI_cut]
 
@@ -1020,18 +1027,18 @@ def pyfof_clump_mass(model, output, link_len, HI_cut, HIarray):
 	pynbody.analysis.halo.center(h21, mode='com')
 	h21_rcut = h21.g[h21.g['r'].in_units('kpc') > 15]
 	
-	#ds = yt.load(fn + output)
-	#ad = ds.all_data()
+	ds = yt.load(fn + output)
+	ad = ds.all_data()
 
-	#if(HIarray == 'yt'):
-	#	trident.add_ion_fields(ds, ions=['H I'], ftype="gas")
-	#	pyn_HI = pynbody.array.SimArray(ad[('gas', 'H_p0_number_density')])
-	#	pyn_HI.units = 'cm^-3'
-	#	s2.g['HI'] = pyn_HI
-	if(HIarray == 'pynbody'): 
+	if(HIarray == 'yt'):
+		trident.add_ion_fields(ds, ions=['H I'], ftype="gas")
+		pyn_HI = pynbody.array.SimArray(ad[('gas', 'H_p0_number_density')])
+		pyn_HI.units = 'cm^-3'
+		s2.g['HI'] = pyn_HI
+	elif(HIarray == 'pynbody'): 
 		print('pynbody HI array being used')
 	else: 
-		print('didnt pick aval option. Pick pynbody.')	
+		print('didnt pick aval option. Pick pynbody or yt.')	
 	
 
 	h21_HI = h21_rcut[h21_rcut['HI'] > HI_cut]
