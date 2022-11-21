@@ -1,0 +1,1 @@
+model t[Gyr] z migration_time[Gyr] freefall[Gyr] meanmass[Msol] meansize[kpc] avgr[kpc] avgvr[kms^-1]
